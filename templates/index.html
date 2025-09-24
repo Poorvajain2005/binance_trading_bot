@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Binance Trading Bot - Real Time</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
+        .header { text-align: center; color: #333; margin-bottom: 30px; }
+        .section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .btn { background: #f0b90b; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        .btn:hover { background: #d4a00a; }
+        input, select { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 3px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .warning { background: #fff3cd; color: #856404; }
+        .price-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .price-card { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; border: 2px solid #e9ecef; }
+        .price-card.up { border-color: #28a745; background: #d4edda; }
+        .price-card.down { border-color: #dc3545; background: #f8d7da; }
+        .price { font-size: 24px; font-weight: bold; margin: 10px 0; }
+        .symbol { font-size: 18px; color: #666; }
+        .live-indicator { color: #28a745; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Binance Futures Trading Bot</h1>
+            <p>Real-Time Trading Interface</p>
+            <div id="connectionStatus" class="status warning">Connecting to live data...</div>
+        </div>
+
+        <div class="section">
+            <h3>🔴 Live Prices <span class="live-indicator" id="liveStatus">CONNECTING...</span></h3>
+            <div class="price-grid" id="priceGrid">
+                <div class="price-card">
+                    <div class="symbol">BTC/USDT</div>
+                    <div class="price" id="BTCUSDT">Loading...</div>
+                </div>
+                <div class="price-card">
+                    <div class="symbol">ETH/USDT</div>
+                    <div class="price" id="ETHUSDT">Loading...</div>
+                </div>
+                <div class="price-card">
+                    <div class="symbol">ADA/USDT</div>
+                    <div class="price" id="ADAUSDT">Loading...</div>
+                </div>
+                <div class="price-card">
+                    <div class="symbol">SOL/USDT</div>
+                    <div class="price" id="SOLUSDT">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>💰 Account Balance <span class="live-indicator" id="balanceStatus">LIVE</span></h3>
+            <div id="balance" class="status success">Loading...</div>
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">Last Update: <span id="balanceTime">--:--:--</span></div>
+        </div>
+
+        <div class="section">
+            <h3>💹 Place Order</h3>
+            <form onsubmit="placeOrder(event)">
+                <div style="margin: 10px 0;">
+                    <label>Order Type:</label>
+                    <select id="orderType" onchange="toggleOrderFields()" required>
+                        <option value="MARKET">Market Order</option>
+                        <option value="LIMIT">Limit Order</option>
+                        <option value="TWAP">TWAP Order (Bonus)</option>
+                    </select>
+                </div>
+                <div style="margin: 10px 0;">
+                    <label>Symbol:</label>
+                    <select id="symbol" required>
+                        <option value="BTCUSDT">BTC/USDT</option>
+                        <option value="ETHUSDT">ETH/USDT</option>
+                        <option value="ADAUSDT">ADA/USDT</option>
+                        <option value="SOLUSDT">SOL/USDT</option>
+                    </select>
+                    <label>Side:</label>
+                    <select id="side" required>
+                        <option value="BUY">BUY</option>
+                        <option value="SELL">SELL</option>
+                    </select>
+                </div>
+                <div style="margin: 10px 0;">
+                    <input type="number" id="quantity" placeholder="Quantity" step="0.001" required>
+                    <input type="number" id="price" placeholder="Price (for Limit)" step="0.01" style="display:none;">
+                </div>
+                <div id="twapFields" style="display:none; margin: 10px 0;">
+                    <input type="number" id="duration" placeholder="Duration (minutes)" min="1" max="60">
+                    <input type="number" id="intervals" placeholder="Intervals" min="2" max="20" value="10">
+                </div>
+                <button type="submit" class="btn">Place Order</button>
+            </form>
+            <div id="orderResult"></div>
+        </div>
+
+        <div class="section">
+            <h3>🏆 Available Features</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                <div style="background: #e8f5e8; padding: 15px; border-radius: 5px; text-align: center;">
+                    <strong>✅ Market Orders</strong><br>
+                    <small>Instant execution</small>
+                </div>
+                <div style="background: #e8f5e8; padding: 15px; border-radius: 5px; text-align: center;">
+                    <strong>✅ Limit Orders</strong><br>
+                    <small>Set your price</small>
+                </div>
+                <div style="background: #e8f5e8; padding: 15px; border-radius: 5px; text-align: center;">
+                    <strong>✅ Stop-Limit Orders</strong><br>
+                    <small>Risk management</small>
+                </div>
+                <div style="background: #fff3cd; padding: 15px; border-radius: 5px; text-align: center;">
+                    <strong>🎆 TWAP Orders</strong><br>
+                    <small>Time-weighted execution</small>
+                </div>
+                <div style="background: #d1ecf1; padding: 15px; border-radius: 5px; text-align: center;">
+                    <strong>🔴 Real-Time Prices</strong><br>
+                    <small>Live market data</small>
+                </div>
+                <div style="background: #d1ecf1; padding: 15px; border-radius: 5px; text-align: center;">
+                    <strong>📊 Live Trading</strong><br>
+                    <small>Real-time execution</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let previousPrices = {};
+
+        socket.on('connect', function() {
+            document.getElementById('liveStatus').textContent = 'LIVE';
+            document.getElementById('liveStatus').style.color = '#28a745';
+            document.getElementById('connectionStatus').innerHTML = '🔴 Connected to Real-Time Data';
+            document.getElementById('connectionStatus').className = 'status success';
+        });
+
+        socket.on('price_update', function(prices) {
+            for (const [symbol, price] of Object.entries(prices)) {
+                const element = document.getElementById(symbol);
+                if (element) {
+                    const card = element.parentElement;
+                    
+                    // Add price change animation
+                    if (previousPrices[symbol]) {
+                        if (price > previousPrices[symbol]) {
+                            card.className = 'price-card up';
+                        } else if (price < previousPrices[symbol]) {
+                            card.className = 'price-card down';
+                        }
+                    }
+                    
+                    element.textContent = `$${price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 8})}`;
+                    previousPrices[symbol] = price;
+                    
+                    // Reset card color after animation
+                    setTimeout(() => {
+                        card.className = 'price-card';
+                    }, 500);
+                }
+            }
+            
+            // Update connection status
+            document.getElementById('connectionStatus').innerHTML = '🔴 Live Market Data - Real-Time Updates';
+            document.getElementById('connectionStatus').className = 'status success';
+        });
+
+        socket.on('balance_update', function(data) {
+            document.getElementById('balance').innerHTML = data.balance;
+            document.getElementById('balanceTime').textContent = data.timestamp;
+            
+            // Add flash effect
+            const balanceElement = document.getElementById('balance');
+            balanceElement.style.background = '#d1ecf1';
+            setTimeout(() => {
+                balanceElement.style.background = '#d4edda';
+            }, 300);
+        });
+
+        function getBalance() {
+            fetch('/api/balance')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('balance').innerHTML = data.balance;
+                    document.getElementById('balanceTime').textContent = data.timestamp;
+                });
+        }
+
+        function toggleOrderFields() {
+            const orderType = document.getElementById('orderType').value;
+            const priceField = document.getElementById('price');
+            const twapFields = document.getElementById('twapFields');
+            
+            if (orderType === 'LIMIT') {
+                priceField.style.display = 'inline';
+                priceField.required = true;
+                twapFields.style.display = 'none';
+            } else if (orderType === 'TWAP') {
+                priceField.style.display = 'none';
+                priceField.required = false;
+                twapFields.style.display = 'block';
+                document.getElementById('duration').required = true;
+            } else {
+                priceField.style.display = 'none';
+                priceField.required = false;
+                twapFields.style.display = 'none';
+            }
+        }
+
+        function placeOrder(event) {
+            event.preventDefault();
+            const orderType = document.getElementById('orderType').value;
+            const symbol = document.getElementById('symbol').value;
+            const side = document.getElementById('side').value;
+            const quantity = document.getElementById('quantity').value;
+            
+            let orderData = {type: orderType, symbol, side, quantity};
+            
+            if (orderType === 'LIMIT') {
+                orderData.price = document.getElementById('price').value;
+            } else if (orderType === 'TWAP') {
+                orderData.duration = document.getElementById('duration').value;
+                orderData.intervals = document.getElementById('intervals').value;
+            }
+
+            fetch('/api/order', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(orderData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                let statusClass = 'success';
+                if (data.status === 'error') {
+                    statusClass = 'status';
+                }
+                document.getElementById('orderResult').innerHTML = 
+                    `<div class="status ${statusClass}">${data.message}</div>`;
+            });
+        }
+
+        // Load balance on page load
+        getBalance();
+    </script>
+</body>
+</html>

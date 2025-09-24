@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real-Time Trading Bot</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; color: white; margin-bottom: 30px; }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        .live-indicator { background: #28a745; color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.9em; }
+        .dashboard { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .prices-section, .trading-section { background: white; border-radius: 15px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .price-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .price-card { background: #f8f9fa; padding: 20px; border-radius: 10px; text-align: center; transition: all 0.3s; border: 2px solid #e9ecef; }
+        .price-card.up { background: #d4edda; border-color: #28a745; transform: scale(1.02); }
+        .price-card.down { background: #f8d7da; border-color: #dc3545; transform: scale(1.02); }
+        .symbol { font-size: 16px; font-weight: bold; color: #666; margin-bottom: 10px; }
+        .price { font-size: 24px; font-weight: bold; margin: 10px 0; }
+        .change { font-size: 14px; padding: 3px 8px; border-radius: 5px; }
+        .change.positive { background: #28a745; color: white; }
+        .change.negative { background: #dc3545; color: white; }
+        .balance-card { background: linear-gradient(45deg, #f0b90b, #f8d12f); color: white; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px; }
+        .balance-amount { font-size: 28px; font-weight: bold; }
+        .form-group { margin: 15px 0; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; }
+        .btn { background: #f0b90b; color: white; padding: 12px 25px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; width: 100%; transition: all 0.3s; }
+        .btn:hover { background: #d4a00a; transform: translateY(-2px); }
+        .order-result { margin-top: 15px; padding: 15px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .orders-section { background: white; border-radius: 15px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .order-item { background: #f8f9fa; padding: 10px; margin: 5px 0; border-radius: 5px; font-size: 14px; }
+        .timestamp { color: #666; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Real-Time Trading Bot</h1>
+            <span class="live-indicator" id="status">🔴 CONNECTING...</span>
+        </div>
+
+        <div class="dashboard">
+            <div class="prices-section">
+                <h3>📊 Live Market Prices</h3>
+                <div class="price-grid">
+                    <div class="price-card" id="BTCUSDT-card">
+                        <div class="symbol">BTC/USDT</div>
+                        <div class="price" id="BTCUSDT-price">Loading...</div>
+                        <div class="change" id="BTCUSDT-change">--</div>
+                    </div>
+                    <div class="price-card" id="ETHUSDT-card">
+                        <div class="symbol">ETH/USDT</div>
+                        <div class="price" id="ETHUSDT-price">Loading...</div>
+                        <div class="change" id="ETHUSDT-change">--</div>
+                    </div>
+                    <div class="price-card" id="ADAUSDT-card">
+                        <div class="symbol">ADA/USDT</div>
+                        <div class="price" id="ADAUSDT-price">Loading...</div>
+                        <div class="change" id="ADAUSDT-change">--</div>
+                    </div>
+                    <div class="price-card" id="SOLUSDT-card">
+                        <div class="symbol">SOL/USDT</div>
+                        <div class="price" id="SOLUSDT-price">Loading...</div>
+                        <div class="change" id="SOLUSDT-change">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="trading-section">
+                <div class="balance-card">
+                    <div>💰 Live Account Balance</div>
+                    <div class="balance-amount" id="balance">$1000.00</div>
+                    <div style="font-size: 16px; margin-top: 5px;">
+                        P&L: <span id="pnl" style="font-weight: bold;">+0.00</span>
+                    </div>
+                    <div class="timestamp" id="balance-time">--:--:--</div>
+                </div>
+
+                <h3>📈 Place Order</h3>
+                <form onsubmit="placeOrder(event)">
+                    <div class="form-group">
+                        <label>Symbol:</label>
+                        <select id="symbol" required>
+                            <option value="BTCUSDT">BTC/USDT</option>
+                            <option value="ETHUSDT">ETH/USDT</option>
+                            <option value="ADAUSDT">ADA/USDT</option>
+                            <option value="SOLUSDT">SOL/USDT</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Side:</label>
+                        <select id="side" required>
+                            <option value="BUY">BUY</option>
+                            <option value="SELL">SELL</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Quantity:</label>
+                        <input type="number" id="quantity" step="0.001" required>
+                    </div>
+                    <button type="submit" class="btn">Execute Order</button>
+                </form>
+                <div id="orderResult"></div>
+            </div>
+        </div>
+
+        <div class="orders-section">
+            <h3>📋 Recent Orders</h3>
+            <div id="orderHistory">No orders yet...</div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let previousPrices = {};
+
+        socket.on('connect', function() {
+            document.getElementById('status').innerHTML = '🟢 LIVE';
+            document.getElementById('status').style.background = '#28a745';
+        });
+
+        socket.on('live_update', function(data) {
+            // Update prices
+            for (const [symbol, priceData] of Object.entries(data.prices)) {
+                updatePriceCard(symbol, priceData);
+            }
+            
+            // Update balance
+            document.getElementById('balance').textContent = `$${data.balance.toFixed(2)}`;
+            document.getElementById('balance-time').textContent = data.timestamp;
+            
+            // Update P&L
+            const pnlElement = document.getElementById('pnl');
+            pnlElement.textContent = data.pnl;
+            pnlElement.style.color = data.pnl_color;
+        });
+
+        socket.on('balance_update', function(data) {
+            document.getElementById('balance').textContent = `$${data.balance.toFixed(2)}`;
+            document.getElementById('balance-time').textContent = data.timestamp;
+            
+            // Update P&L with flash effect
+            const pnlElement = document.getElementById('pnl');
+            pnlElement.textContent = data.pnl;
+            pnlElement.style.color = data.pnl_color;
+            
+            // Flash effect
+            pnlElement.style.background = 'rgba(255,255,255,0.3)';
+            setTimeout(() => {
+                pnlElement.style.background = 'transparent';
+            }, 500);
+        });
+
+        function updatePriceCard(symbol, priceData) {
+            const priceElement = document.getElementById(`${symbol}-price`);
+            const changeElement = document.getElementById(`${symbol}-change`);
+            const cardElement = document.getElementById(`${symbol}-card`);
+            
+            if (priceElement && changeElement && cardElement) {
+                // Update price
+                priceElement.textContent = `$${priceData.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 8})}`;
+                
+                // Update change
+                const change = priceData.change;
+                changeElement.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+                changeElement.className = change >= 0 ? 'change positive' : 'change negative';
+                
+                // Animate card
+                if (previousPrices[symbol]) {
+                    if (priceData.price > previousPrices[symbol]) {
+                        cardElement.className = 'price-card up';
+                    } else if (priceData.price < previousPrices[symbol]) {
+                        cardElement.className = 'price-card down';
+                    }
+                    
+                    setTimeout(() => {
+                        cardElement.className = 'price-card';
+                    }, 1000);
+                }
+                
+                previousPrices[symbol] = priceData.price;
+            }
+        }
+
+        function placeOrder(event) {
+            event.preventDefault();
+            
+            const orderData = {
+                symbol: document.getElementById('symbol').value,
+                side: document.getElementById('side').value,
+                quantity: document.getElementById('quantity').value,
+                type: 'MARKET'
+            };
+
+            fetch('/api/order', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(orderData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                const resultDiv = document.getElementById('orderResult');
+                resultDiv.innerHTML = `<div class="${data.status}">${data.message}</div>`;
+                
+                if (data.status === 'success') {
+                    // Clear form
+                    document.getElementById('quantity').value = '';
+                    // Refresh order history
+                    loadOrderHistory();
+                }
+            })
+            .catch(error => {
+                document.getElementById('orderResult').innerHTML = 
+                    `<div class="error">❌ Error: ${error.message}</div>`;
+            });
+        }
+
+        function loadOrderHistory() {
+            fetch('/api/orders')
+                .then(response => response.json())
+                .then(orders => {
+                    const historyDiv = document.getElementById('orderHistory');
+                    if (orders.length === 0) {
+                        historyDiv.innerHTML = 'No orders yet...';
+                        return;
+                    }
+                    
+                    historyDiv.innerHTML = orders.reverse().map(order => 
+                        `<div class="order-item">
+                            <strong>${order.side} ${order.quantity} ${order.symbol}</strong> 
+                            @ $${order.price.toLocaleString()} 
+                            <span class="timestamp">${order.timestamp}</span>
+                        </div>`
+                    ).join('');
+                });
+        }
+
+        // Load order history on page load
+        loadOrderHistory();
+        
+        // Refresh order history every 10 seconds
+        setInterval(loadOrderHistory, 10000);
+    </script>
+</body>
+</html>
